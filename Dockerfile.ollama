@@ -1,11 +1,19 @@
+# Dockerfile.ollama
 FROM ollama/ollama:latest
 
-# Copy Modelfile and startup script
-COPY Modelfile /root/.ollama/Modelfile
+# ------------------------------------------------------------------
+# 1. Copy the model definition and the startup script
+# ------------------------------------------------------------------
+COPY Modelfile      /root/.ollama/Modelfile
 COPY start-ollama.sh /start-ollama.sh
-
-# Make script executable
 RUN chmod +x /start-ollama.sh
 
-# Use the startup script
-CMD ["/start-ollama.sh"]
+# ------------------------------------------------------------------
+# 2. **Override** the base image entrypoint so the script runs directly
+# ------------------------------------------------------------------
+ENTRYPOINT ["/start-ollama.sh"]
+
+# ------------------------------------------------------------------
+# 3. Expose Ollama’s API port (required for Render health-checks)
+# ------------------------------------------------------------------
+EXPOSE 11434
