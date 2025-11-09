@@ -1,22 +1,22 @@
-#!/bin/sh
-# Start Ollama server in background
-echo "🚀 Starting Ollama server..."
-ollama serve &
+#!/bin/bash
+set -euo pipefail   # fail fast
 
-# Wait for server to start
-echo "⏳ Waiting for server to start..."
-sleep 10
+echo "Starting Ollama server..."
+ollama serve &      # background
 
-# Pull the model
-echo "📥 Downloading AI model (this takes ~30 seconds)..."
+echo "Waiting for Ollama to be ready (max 30 s)..."
+timeout 30s bash -c '
+until curl -s http://localhost:11434/api/tags > /dev/null; do
+  sleep 1
+done
+'
+
+echo "Pulling tinyllama..."
 ollama pull tinyllama
 
-# Create custom model
-echo "🔧 Creating custom model..."
+echo "Creating custom model 'paper-analyzer'..."
 ollama create paper-analyzer -f /root/.ollama/Modelfile
 
-echo "✅ AI model loaded and ready!"
-echo "📊 Research Paper Analyzer is running on port 11434..."
-
-# Keep the container alive
-wait
+echo "AI model ready on port 11434"
+echo "Keeping container alive..."
+wait   # keep the PID of ollama serve
