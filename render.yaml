@@ -1,29 +1,27 @@
 services:
-  # ------------------- Ollama backend -------------------
+  # ------------------- Ollama Backend -------------------
   - type: web
     name: research-paper-ollama
     env: docker
     dockerfilePath: ./Dockerfile.ollama
     plan: free
-    region: oregon          # any region you prefer
-    healthCheckPath: /api/tags   # Render will ping this
+    region: oregon
+    healthCheckPath: /api/tags
     envVars:
       - key: OLLAMA_HOST
         value: 0.0.0.0
 
-  # ------------------- Streamlit frontend -------------------
+  # ------------------- Streamlit Frontend -------------------
   - type: web
     name: research-paper-frontend
     env: docker
     dockerfilePath: ./Dockerfile.streamlit
     plan: free
     region: oregon
-    # Tell Render which port Streamlit listens on
     port: 8501
     envVars:
-      # Internal URL of the Ollama service (Render injects it)
       - key: OLLAMA_URL
         fromService:
           name: research-paper-ollama
           type: web
-          property: host   # becomes http://<internal-host>:11434
+          property: host
