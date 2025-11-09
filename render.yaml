@@ -6,10 +6,10 @@ services:
     dockerfilePath: ./Dockerfile.ollama
     plan: free
     region: oregon
-    healthCheckPath: /api/tags
     envVars:
       - key: OLLAMA_HOST
         value: 0.0.0.0
+    healthCheckPath: /
 
   # ------------------- Streamlit Frontend -------------------
   - type: web
