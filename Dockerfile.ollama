@@ -1,19 +1,13 @@
 # Dockerfile.ollama
 FROM ollama/ollama:latest
 
-# ------------------------------------------------------------------
-# 1. Copy the model definition and the startup script
-# ------------------------------------------------------------------
+# Copy model definition and startup script
 COPY Modelfile      /root/.ollama/Modelfile
 COPY start-ollama.sh /start-ollama.sh
 RUN chmod +x /start-ollama.sh
 
-# ------------------------------------------------------------------
-# 2. **Override** the base image entrypoint so the script runs directly
-# ------------------------------------------------------------------
-ENTRYPOINT ["/start-ollama.sh"]
-
-# ------------------------------------------------------------------
-# 3. Expose Ollama’s API port (required for Render health-checks)
-# ------------------------------------------------------------------
+# Expose Ollama API port (fixes "No open ports detected")
 EXPOSE 11434
+
+# Run the startup script directly
+ENTRYPOINT ["/start-ollama.sh"]
