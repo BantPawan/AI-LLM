@@ -1,6 +1,11 @@
 FROM ollama/ollama:latest
 
+# Copy Modelfile and startup script
 COPY Modelfile /root/.ollama/Modelfile
+COPY start-ollama.sh /start-ollama.sh
 
-# Use tinyllama for speed - starts in seconds!
-CMD sh -c "ollama serve & sleep 5 && ollama pull tinyllama && ollama create paper-analyzer -f /root/.ollama/Modelfile && wait"
+# Make script executable
+RUN chmod +x /start-ollama.sh
+
+# Use the startup script
+CMD ["/start-ollama.sh"]
