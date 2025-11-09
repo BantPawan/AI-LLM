@@ -7,7 +7,8 @@ import textwrap
 import os
 from io import BytesIO
 
-# Render injects the full URL (host + port)
+# --- CONFIG ---
+# Render injects OLLAMA_URL = http://<internal-host>:11434
 OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434') + '/api/generate'
 MODEL_NAME = "paper-analyzer"
 
