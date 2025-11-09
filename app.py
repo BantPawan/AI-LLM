@@ -18,8 +18,8 @@ if "chunks" not in st.session_state:
 if "processed" not in st.session_state:
     st.session_state.processed = False
 
-# --- PROMPTS ---
-ANSWER_PROMPT = """[INST] <<SYS>>
+# --- PROMPTS --- (UPDATED FOR TINYLLAMA)
+ANSWER_PROMPT = """<|system|>
 You are a professional academic assistant analyzing research papers. Structure your answer with these exact section headers:
 
 1. KEY CONCEPT: Identify the main concept (1-2 sentences)
@@ -28,27 +28,27 @@ You are a professional academic assistant analyzing research papers. Structure y
 4. PRACTICAL IMPLICATIONS: Describe 3-5 applications/benefits
 5. SUMMARY: Brief 2-3 sentence recap
 
-Format equations using $$ for LaTeX and wrap code in ```.
-<</SYS>>
-
+Format equations using $$ for LaTeX and wrap code in ```.</s>
+<|user|>
 CONTEXT: {context}
 
-QUESTION: {question}
-[/INST]"""
+QUESTION: {question}</s>
+<|assistant|>
+"""
 
-SUMMARY_PROMPT = """[INST] <<SYS>>
-Summarize the following research paper content in 100 words using bullet points.
-<</SYS>>
+SUMMARY_PROMPT = """<|system|>
+Summarize the following research paper content in 100 words using bullet points.</s>
+<|user|>
+CONTEXT: {context}</s>
+<|assistant|>
+"""
 
-CONTEXT: {context}
-[/INST]"""
-
-QUIZ_PROMPT = """[INST] <<SYS>>
-Generate 3 true/false questions based on this content with answers explained.
-<</SYS>>
-
-CONTEXT: {context}
-[/INST]"""
+QUIZ_PROMPT = """<|system|>
+Generate 3 true/false questions based on this content with answers explained.</s>
+<|user|>
+CONTEXT: {context}</s>
+<|assistant|>
+"""
 
 # --- HELPER FUNCTIONS ---
 def extract_text_from_pdf(uploaded_file) -> str:
