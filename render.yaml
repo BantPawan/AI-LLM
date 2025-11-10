@@ -9,7 +9,9 @@ services:
     envVars:
       - key: OLLAMA_HOST
         value: 0.0.0.0
-    healthCheckPath: /
+    healthCheckPath: /api/tags
+    healthCheckTimeout: 120
+    initialDelay: 180
 
   # ------------------- Streamlit Frontend -------------------
   - type: web
@@ -20,9 +22,8 @@ services:
     region: oregon
     envVars:
       - key: OLLAMA_URL
-        fromService:
-          name: research-paper-ollama
-          type: web
-          property: host
+        value: http://research-paper-ollama:11434
       - key: STREAMLIT_SERVER_PORT
         value: 8501
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: true
