@@ -18,10 +18,11 @@ services:
     dockerfilePath: ./Dockerfile.streamlit
     plan: free
     region: oregon
-    port: 8501
     envVars:
       - key: OLLAMA_URL
         fromService:
           name: research-paper-ollama
           type: web
           property: host
+      - key: STREAMLIT_SERVER_PORT
+        value: 8501
