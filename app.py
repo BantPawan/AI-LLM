@@ -8,8 +8,10 @@ import os
 from io import BytesIO
 
 # --- CONFIG ---
-# Render injects OLLAMA_URL = http://<internal-host>:11434
-OLLAMA_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434') + '/api/generate'
+# Get OLLAMA_URL from environment with proper formatting
+OLLAMA_BASE_URL = os.getenv('OLLAMA_URL', 'http://localhost:11434')
+OLLAMA_GENERATE_URL = f"{OLLAMA_BASE_URL}/api/generate"
+OLLAMA_LIST_URL = f"{OLLAMA_BASE_URL}/api/tags"
 MODEL_NAME = "paper-analyzer"
 
 # --- SESSION STATE ---
@@ -17,40 +19,52 @@ if "chunks" not in st.session_state:
     st.session_state.chunks = []
 if "processed" not in st.session_state:
     st.session_state.processed = False
+if "model_ready" not in st.session_state:
+    st.session_state.model_ready = False
 
-# --- PROMPTS --- (UPDATED FOR TINYLLAMA)
-ANSWER_PROMPT = """<|system|>
-You are a professional academic assistant analyzing research papers. Structure your answer with these exact section headers:
+# --- SIMPLIFIED PROMPTS (Better for TinyLlama) ---
+ANSWER_PROMPT = """Analyze this research paper content and answer the question.
 
-1. KEY CONCEPT: Identify the main concept (1-2 sentences)
-2. MATHEMATICAL FORMULATION: Provide equations/formulas with explanations
-3. MATHEMATICAL INTUITION: Explain the meaning and significance
-4. PRACTICAL IMPLICATIONS: Describe 3-5 applications/benefits
-5. SUMMARY: Brief 2-3 sentence recap
-
-Format equations using $$ for LaTeX and wrap code in ```.</s>
-<|user|>
 CONTEXT: {context}
 
-QUESTION: {question}</s>
-<|assistant|>
-"""
+QUESTION: {question}
 
-SUMMARY_PROMPT = """<|system|>
-Summarize the following research paper content in 100 words using bullet points.</s>
-<|user|>
-CONTEXT: {context}</s>
-<|assistant|>
-"""
+Structure your answer with these sections:
+1. KEY CONCEPT: [1-2 sentences]
+2. MATHEMATICAL FORMULATION: [equations and formulas]
+3. MATHEMATICAL INTUITION: [meaning and significance]
+4. PRACTICAL IMPLICATIONS: [3-5 applications]
+5. SUMMARY: [2-3 sentence recap]
 
-QUIZ_PROMPT = """<|system|>
-Generate 3 true/false questions based on this content with answers explained.</s>
-<|user|>
-CONTEXT: {context}</s>
-<|assistant|>
-"""
+Answer:"""
+
+SUMMARY_PROMPT = """Summarize this research paper content in 100 words using bullet points:
+
+{context}
+
+Summary:"""
+
+QUIZ_PROMPT = """Generate 3 true/false questions based on this research paper content. For each question, provide the answer and explanation.
+
+{context}
+
+Questions:"""
 
 # --- HELPER FUNCTIONS ---
+def check_model_ready():
+    """Check if Ollama and model are ready"""
+    try:
+        response = requests.get(OLLAMA_LIST_URL, timeout=10)
+        if response.status_code == 200:
+            models = response.json().get("models", [])
+            model_names = [model.get("name", "") for model in models]
+            # Check if our model exists
+            if any(MODEL_NAME in name for name in model_names):
+                return True
+        return False
+    except:
+        return False
+
 def extract_text_from_pdf(uploaded_file) -> str:
     """Extract text from PDF file with error handling"""
     try:
@@ -86,31 +100,40 @@ def split_text(text: str, chunk_size: int = 800, overlap: int = 100):
 def query_ollama(prompt: str) -> str:
     """Query Ollama API with robust error handling"""
     try:
+        # First check if model is ready
+        if not check_model_ready():
+            return "Error: AI model is not ready yet. Please wait a moment and try again."
+            
         response = requests.post(
-            OLLAMA_URL,
+            OLLAMA_GENERATE_URL,
             json={
                 "model": MODEL_NAME,
                 "prompt": prompt,
                 "stream": False,
                 "options": {"temperature": 0.5}
             },
-            timeout=180  # Increased timeout for Render
+            timeout=120  # 2 minute timeout
         )
         
         if response.status_code == 200:
-            return response.json().get("response", "No response from model.")
+            result = response.json()
+            return result.get("response", "No response from model.")
         else:
             return f"API Error: {response.status_code} - {response.text}"
             
     except requests.exceptions.Timeout:
         return "Error: Request timeout - the AI service is taking too long to respond."
     except requests.exceptions.ConnectionError:
-        return f"Error: Cannot connect to AI service at {OLLAMA_URL}. Please check if the backend is running."
+        return f"Error: Cannot connect to AI service at {OLLAMA_BASE_URL}. Please check if the backend is running."
     except Exception as e:
         return f"Error: {str(e)}"
 
 def format_response(raw: str) -> str:
     """Format the AI response into structured sections"""
+    # If there's an error message, return it as is
+    if raw.startswith("Error:") or raw.startswith("API Error:"):
+        return f"**❌ {raw}**"
+    
     # Initialize sections
     sections = {
         "KEY CONCEPT": "",
@@ -128,33 +151,20 @@ def format_response(raw: str) -> str:
         if not line:
             continue
             
-        # Check if this line starts a new section
-        for section in sections:
-            if line.upper().startswith(section):
-                current_section = section
-                # Remove section header from content
-                line = line[len(section):].lstrip(' :')
-                break
-        else:
-            # If no section header found, check for numbered sections
-            if line.startswith('1.') and 'KEY CONCEPT' in line.upper():
-                current_section = "KEY CONCEPT"
-                line = line[2:].lstrip()
-            elif line.startswith('2.') and 'MATHEMATICAL' in line.upper():
-                current_section = "MATHEMATICAL FORMULATION" 
-                line = line[2:].lstrip()
-            elif line.startswith('3.') and 'INTUITION' in line.upper():
-                current_section = "MATHEMATICAL INTUITION"
-                line = line[2:].lstrip()
-            elif line.startswith('4.') and 'PRACTICAL' in line.upper():
-                current_section = "PRACTICAL IMPLICATIONS"
-                line = line[2:].lstrip()
-            elif line.startswith('5.') and 'SUMMARY' in line.upper():
-                current_section = "SUMMARY"
-                line = line[2:].lstrip()
-                
-        # Add content to current section
-        if current_section and line:
+        # Check for section headers (more flexible matching)
+        line_upper = line.upper()
+        if "KEY CONCEPT" in line_upper or line.startswith("1."):
+            current_section = "KEY CONCEPT"
+        elif "MATHEMATICAL FORMULATION" in line_upper or line.startswith("2."):
+            current_section = "MATHEMATICAL FORMULATION"
+        elif "MATHEMATICAL INTUITION" in line_upper or line.startswith("3."):
+            current_section = "MATHEMATICAL INTUITION"
+        elif "PRACTICAL IMPLICATIONS" in line_upper or line.startswith("4."):
+            current_section = "PRACTICAL IMPLICATIONS"
+        elif "SUMMARY" in line_upper or line.startswith("5."):
+            current_section = "SUMMARY"
+        elif current_section and line:
+            # Add content to current section
             if sections[current_section]:
                 sections[current_section] += " " + line
             else:
@@ -166,7 +176,9 @@ def format_response(raw: str) -> str:
         if content and content.strip():
             formatted += f"### {section}\n{content.strip()}\n\n"
         else:
-            formatted += f"### {section}\n*Information not specified in response*\n\n"
+            # If section is empty but we have content, show a placeholder
+            if raw.strip():
+                formatted += f"### {section}\n*Information not specified in response*\n\n"
             
     return formatted
 
@@ -210,6 +222,15 @@ def main():
     st.markdown("<h1 class='main-header'>🔍 Research Paper Q&A Assistant</h1>", unsafe_allow_html=True)
     st.markdown("**Upload research papers → Ask questions → Get structured AI analysis**")
 
+    # Check if model is ready
+    if not st.session_state.model_ready:
+        with st.spinner("🔍 Checking AI model status..."):
+            if check_model_ready():
+                st.session_state.model_ready = True
+                st.success("✅ AI model is ready!")
+            else:
+                st.warning("⏳ AI model is still loading. Please wait...")
+
     # Info box about the demo
     st.markdown("""
     <div class="info-box">
@@ -232,6 +253,10 @@ def main():
                         st.session_state.chunks = split_text(text)
                         st.session_state.processed = True
                         st.success(f"✅ Processed! Split into {len(st.session_state.chunks)} sections")
+                        
+                        # Show first chunk preview
+                        with st.expander("Preview first section"):
+                            st.text(st.session_state.chunks[0][:500] + "...")
                     else:
                         st.error("❌ Could not extract sufficient text from PDF. Please try another file.")
             else:
@@ -257,36 +282,45 @@ def main():
             
             if st.button("🤖 Analyze", type="primary", use_container_width=True):
                 if question.strip():
-                    # Use first 3 chunks for context (adjust based on content)
-                    context = "\n\n".join(st.session_state.chunks[:3])
-                    prompt = ANSWER_PROMPT.format(context=context, question=question)
-                    
-                    with st.spinner("🔍 Analyzing paper content..."):
-                        raw_response = query_ollama(prompt)
-                        formatted_response = format_response(raw_response)
-                        st.markdown(formatted_response, unsafe_allow_html=True)
+                    if not st.session_state.model_ready:
+                        st.error("AI model is not ready yet. Please wait...")
+                    else:
+                        # Use first 3 chunks for context (adjust based on content)
+                        context = "\n\n".join(st.session_state.chunks[:3])
+                        prompt = ANSWER_PROMPT.format(context=context, question=question)
+                        
+                        with st.spinner("🔍 Analyzing paper content..."):
+                            raw_response = query_ollama(prompt)
+                            formatted_response = format_response(raw_response)
+                            st.markdown(formatted_response)
                 else:
                     st.warning("Please enter a question")
 
         with tab2:
             st.subheader("Generate Summary")
             if st.button("📋 Generate Summary", use_container_width=True):
-                context = "\n\n".join(st.session_state.chunks[:5])  # More context for summary
-                prompt = SUMMARY_PROMPT.format(context=context)
-                
-                with st.spinner("📝 Generating summary..."):
-                    summary = query_ollama(prompt)
-                    st.markdown(f"### 📄 Paper Summary\n{summary}")
+                if not st.session_state.model_ready:
+                    st.error("AI model is not ready yet. Please wait...")
+                else:
+                    context = "\n\n".join(st.session_state.chunks[:5])  # More context for summary
+                    prompt = SUMMARY_PROMPT.format(context=context)
+                    
+                    with st.spinner("📝 Generating summary..."):
+                        summary = query_ollama(prompt)
+                        st.markdown(f"### 📄 Paper Summary\n{summary}")
 
         with tab3:
             st.subheader("Generate Quiz")
             if st.button("🎯 Generate Quiz", use_container_width=True):
-                context = "\n\n".join(st.session_state.chunks[:4])
-                prompt = QUIZ_PROMPT.format(context=context)
-                
-                with st.spinner("🎲 Creating quiz questions..."):
-                    quiz = query_ollama(prompt)
-                    st.markdown(f"### ❓ Comprehension Quiz\n{quiz}")
+                if not st.session_state.model_ready:
+                    st.error("AI model is not ready yet. Please wait...")
+                else:
+                    context = "\n\n".join(st.session_state.chunks[:4])
+                    prompt = QUIZ_PROMPT.format(context=context)
+                    
+                    with st.spinner("🎲 Creating quiz questions..."):
+                        quiz = query_ollama(prompt)
+                        st.markdown(f"### ❓ Comprehension Quiz\n{quiz}")
 
     else:
         # Welcome screen
@@ -311,11 +345,11 @@ def main():
             """)
         
         with col2:
-            st.image(
-                "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?auto=format&fit=crop&w=400", 
-                use_column_width=True,
-                caption="Research Paper Analysis"
-            )
+            st.markdown("""
+            ### 🔧 Current Status:
+            - Frontend: ✅ Ready
+            - AI Backend: {} 
+            """.format("✅ Ready" if st.session_state.model_ready else "⏳ Loading..."))
 
 if __name__ == "__main__":
     main()
